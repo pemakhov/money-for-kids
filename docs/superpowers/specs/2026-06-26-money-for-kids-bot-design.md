@@ -14,11 +14,20 @@ how much one parent must compensate the other (costs split 50/50).
 
 Two fixed participants, identified by Telegram **user ID**:
 
-- `USER1` — display name **Сергій** (constant in code)
-- `USER2` — display name **Марина** (constant in code)
+- `USER1` — **Сергій** (nominative) / **Сергію** (dative)
+- `USER2` — **Марина** (nominative) / **Марині** (dative)
 
-User IDs are supplied via `.env` (not yet known); display names are hardcoded
-constants. Messages from any other user are ignored for accounting.
+User IDs are supplied via `.env` (not yet known); names are hardcoded constants.
+Because Ukrainian declines names by grammatical case, each participant name is a
+constant **object with both forms** — nominative (used as subject / table label)
+and dative (used as the recipient of compensation):
+
+```ts
+const USER1 = { nominative: 'Сергій', dative: 'Сергію' }
+const USER2 = { nominative: 'Марина', dative: 'Марині' }
+```
+
+Messages from any other user are ignored for accounting.
 
 ## Behavior
 
@@ -70,8 +79,12 @@ For a given accounting month:
 
 ### Table format (Ukrainian)
 
+The compensation sentence uses correct cases: the payer in the **nominative**
+(subject) and the recipient in the **dative**:
+`«{payer.nominative} має компенсувати {recipient.dative}: {amount} ₴»`.
+
 ```
-Баланс за Червень 2026
+Баланс за червень 2026
 
 Сергій:  4000 ₴
 Марина:  1000 ₴
@@ -79,6 +92,8 @@ For a given accounting month:
 
 Марина має компенсувати Сергію: 1500 ₴
 ```
+
+(If Сергій had paid less, the line reads `Сергій має компенсувати Марині: … ₴`.)
 
 ## Data model (SQLite, via better-sqlite3)
 
@@ -158,7 +173,8 @@ data/               sqlite db file (gitignored)
   - `parser`: `4000`, `4 000`, `4000.50`, `4000,50`, non-numbers, leading text.
   - `dates`: current/previous month buckets across year boundary, in `Europe/Kyiv`.
   - `balance`: 50/50 split, equal totals, one-sided, zero, rounding of cents.
-  - `format`: table text and Ukrainian month-name genitive/nominative forms.
+  - `format`: table text, Ukrainian month names, and correct name cases in the
+    compensation line (payer nominative, recipient dative; both directions).
 - Handlers kept thin; tested with grammY's test utilities or injected fake context.
 
 ## Configuration (`.env`)
