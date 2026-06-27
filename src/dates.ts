@@ -24,3 +24,13 @@ export function previousBucket(timezone: string, now: DateTime = DateTime.utc())
 export function nowUtcISO(): string {
   return DateTime.utc().toISO()!;
 }
+
+export function bucketFromUnix(unixSeconds: number, timezone: string): MonthBucket {
+  return toBucket(DateTime.fromSeconds(unixSeconds, { zone: 'utc' }).setZone(timezone));
+}
+
+export function previousBucketFromUnix(unixSeconds: number, timezone: string): MonthBucket {
+  return toBucket(
+    DateTime.fromSeconds(unixSeconds, { zone: 'utc' }).setZone(timezone).minus({ months: 1 }),
+  );
+}
