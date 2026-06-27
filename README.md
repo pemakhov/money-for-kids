@@ -5,16 +5,17 @@ accounted message with a 👍 reaction, and reports monthly 50/50 balances.
 
 ## Setup
 
-1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token.
-2. Get both participants' numeric Telegram IDs (e.g. via [@userinfobot](https://t.me/userinfobot)).
-3. `cp .env.example .env` and fill in `BOT_TOKEN`, `USER1_ID` (Сергій), `USER2_ID` (Марина).
+1. Create a dedicated Telegram account and add it to your family group.
+2. Get `API_ID` and `API_HASH` from https://my.telegram.org (under API development tools).
+3. Get both participants' numeric Telegram IDs (e.g. via [@userinfobot](https://t.me/userinfobot)).
 4. `npm install`
-5. In @BotFather, disable the bot's group privacy so it can read all group messages.
-6. Add the bot to your group.
+5. `cp .env.example .env` and fill in `API_ID`, `API_HASH`, `GROUP_CHAT_ID` (numeric group id, e.g. -1001234567890), `USER1_ID` (Сергій), `USER2_ID` (Марина), and optionally `TIMEZONE`.
+6. Run `npm run login` once, follow the prompts, and paste the printed `TELEGRAM_SESSION` value into `.env`.
+7. `npm start`
 
 ## Run
 
-- `npm start` — start the bot (long polling).
+- `npm start` — start the ledger account.
 - `npm run dev` — start with auto-reload.
 - `npm test` — run the test suite.
 - `npm run typecheck` — type-check without emitting.
@@ -29,7 +30,8 @@ accounted message with a 👍 reaction, and reports monthly 50/50 balances.
 
 ## Notes
 
-- Money is stored in integer cents in a local SQLite file (`DB_PATH`, default `./data/expenses.db`). Back up by copying that file.
+- **No database**: all state lives in Telegram. The account's 👍 reactions mark counted expenses, and the ledger recomputes the balance from chat history on demand (on `/balance`, `/balance_previous`, at startup, and before the monthly banner).
+- **Reconciliation**: edits and deletes are automatically reconciled by re-reading history. If the dedicated account was offline, reconciliation happens at the next balance check or startup.
 - Timezone defaults to `Europe/Kyiv` (`TIMEZONE` env).
 
 ## Limitations
@@ -37,5 +39,4 @@ accounted message with a 👍 reaction, and reports monthly 50/50 balances.
 - An expense is any message whose **first token is a number**, so a message that
   happens to start with a number (e.g. a date like `10.06.2026 ...`) will be logged.
   Start non-expense messages with a non-numeric character.
-- Editing a message after it was accounted does **not** update the stored expense;
-  the bot only reacts to new messages. Post a correction as a new message instead.
+- Editing or deleting a message while the account is offline will reconcile at the next balance check or startup, not instantly.
