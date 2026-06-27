@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A TypeScript Telegram bot for two co-parents to log kids' expenses in a group chat, mark each accounted message with ✅, report 50/50 monthly balances, allow back-dating to the previous month, and post a monthly image banner.
+**Goal:** A TypeScript Telegram bot for two co-parents to log kids' expenses in a group chat, mark each accounted message with a 👍 reaction, report 50/50 monthly balances, allow back-dating to the previous month, and post a monthly image banner.
 
 **Architecture:** Long-polling grammY bot. All business logic lives in small pure modules (`parser`, `dates`, `balance`, `format`) plus a `service` layer that talks to SQLite via `db`. Telegram glue (`bot.ts`, `index.ts`) is thin and delegates to the service. Pure modules and the service are unit-tested with vitest; the in-memory SQLite database makes service tests deterministic.
 
@@ -16,7 +16,7 @@
 - **Money:** stored and computed in integer **cents**; never use floats for stored amounts. Currency symbol `₴`.
 - **Split:** 50/50. Compensation = `round(|paid1 − paid2| / 2)`; the one who paid less compensates the one who paid more. Compensation sentence: `«{payer.nominative} має компенсувати {recipient.dative}: {amount} ₴»`.
 - **Timezone:** `Europe/Kyiv` default, from `TIMEZONE` env. All month bucketing is timezone-aware.
-- **Marking:** valid expense message → react `✅` (fallback to a text reply if reaction not permitted).
+- **Marking:** valid expense message → react `👍` (Telegram disallows ✅ as a default bot reaction; user-confirmed substitution), with a text-reply fallback (`✅ Враховано`, plain text) if the reaction is not permitted.
 - **Commands:** `/balance`, `/balance_previous`, `/to_previous`.
 - **Accounting month model:** every expense row carries an explicit `(accounting_year, accounting_month)`. Normal messages → the month of the message timestamp (in TZ). `/to_previous` → the previous month. `/balance` sums the current month; `/balance_previous` sums the previous month — this is what makes back-dated entries appear in the previous-month report.
 
@@ -1276,7 +1276,7 @@ export function createBot(config: Config, db: Db): Bot {
     if (!msg) return;
     if (handleExpenseMessage(db, config, msg) === 'accounted') {
       try {
-        await ctx.react('✅');
+        await ctx.react('👍'); // ✅ is not an allowed default bot reaction; 👍 used (user-confirmed)
       } catch {
         await ctx.reply('✅ Враховано');
       }
@@ -1380,8 +1380,8 @@ Prerequisites: create a real bot with `@BotFather`, get its token; get both Tele
 
 Run: `npm start`
 Verify:
-1. Post `4000 гривень Ігорю на місяць` from user 1 → bot reacts ✅, message stored.
-2. Post `1000 на одяг` from user 2 → ✅.
+1. Post `4000 гривень Ігорю на місяць` from user 1 → bot reacts 👍, message stored.
+2. Post `1000 на одяг` from user 2 → 👍.
 3. `/balance` → table shows `Сергій: 4000 ₴`, `Марина: 1000 ₴`, `Разом: 5000 ₴`, `Марина має компенсувати Сергію: 1500 ₴`.
 4. `/to_previous 300 Максу на бутерброд` → reply `↩️ Зараховано в <минулий місяць>: 300 ₴`.
 5. `/balance_previous` → previous-month table includes the 300 ₴ entry.
@@ -1409,7 +1409,7 @@ git commit -m "feat: entrypoint with command menu and monthly banner scheduling"
 # Money for Kids — Telegram Bot
 
 Tracks kids' expenses for two co-parents in a shared Telegram group, marks each
-accounted message with ✅, and reports monthly 50/50 balances.
+accounted message with a 👍 reaction, and reports monthly 50/50 balances.
 
 ## Setup
 
@@ -1430,7 +1430,7 @@ accounted message with ✅, and reports monthly 50/50 balances.
 ## Usage
 
 - Any message starting with a number is logged as an expense by its sender and
-  marked ✅. Example: `4000 гривень Ігорю на місяць`.
+  marked with a 👍 reaction. Example: `4000 гривень Ігорю на місяць`.
 - `/balance` — totals and who-owes-whom for the current month.
 - `/balance_previous` — same for the previous month (includes `/to_previous` entries).
 - `/to_previous <сума> <опис>` — log an expense into the previous month, e.g.

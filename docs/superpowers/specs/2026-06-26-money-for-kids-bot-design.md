@@ -40,7 +40,11 @@ Messages from any other user are ignored for accounting.
 - On a valid expense from a configured user, the bot:
   1. stores it, attributed to the sender, with accounting month = the calendar
      month of the message (in the configured timezone), and
-  2. reacts **✅** on the message.
+  2. reacts **👍** on the message.
+- Note: the accounted mark is the **👍** reaction. Telegram does not allow ✅ as
+  a default bot reaction (it is not in the allowed emoji set), so 👍 is used
+  (user-confirmed during implementation). The text-reply fallback still uses the
+  ✅ character, since that is plain text.
 - Messages not starting with a number, or from non-participants, are ignored
   (no reaction, no storage).
 - If the bot lacks reaction permission, it falls back to a short text reply.
@@ -140,7 +144,7 @@ src/
   banner.ts         month/year -> PNG (svg + sharp)
   scheduler.ts      node-cron monthly banner post
   handlers/
-    expense.ts      number-message -> store + react ✅
+    expense.ts      number-message -> store + react 👍
     balance.ts      /balance, /balance_previous
     toPrevious.ts   /to_previous
 .env.example
