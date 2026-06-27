@@ -46,7 +46,7 @@ export interface ToPreviousResult {
 export function handleToPrevious(db: Db, config: Config, msg: IncomingMessage, argsText: string): ToPreviousResult {
   const participant = participantFor(config, msg.userId);
   if (!participant) {
-    return { reply: 'Лише Сергій або Марина можуть додавати витрати.', stored: false };
+    return { reply: `Лише ${config.user1.nominative} або ${config.user2.nominative} можуть додавати витрати.`, stored: false };
   }
   const amountCents = parseAmountCents(argsText);
   if (amountCents === null) {

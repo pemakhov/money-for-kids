@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from '../src/db';
-import { currentBucket, previousBucket } from '../src/dates';
+import { currentBucket } from '../src/dates';
 import { handleExpenseMessage, handleToPrevious, buildBalanceReport, type IncomingMessage } from '../src/service';
 import type { Config } from '../src/config';
 
@@ -46,10 +46,8 @@ describe('handleToPrevious', () => {
     const db = freshDb();
     const res = handleToPrevious(db, config, msg({ messageId: 5 }), '300 Максу на бутерброд');
     expect(res.stored).toBe(true);
-    const prev = previousBucket(config.timezone);
     expect(buildBalanceReport(db, config, -100, 'previous')).toContain('Сергій: 300 ₴');
     expect(res.reply).toContain('Зараховано');
-    void prev;
   });
   it('rejects missing amount with usage help', () => {
     const db = freshDb();
@@ -61,6 +59,7 @@ describe('handleToPrevious', () => {
     const db = freshDb();
     const res = handleToPrevious(db, config, msg({ messageId: 7, userId: 999 }), '300 x');
     expect(res.stored).toBe(false);
+    expect(res.reply.length).toBeGreaterThan(0);
   });
 });
 
