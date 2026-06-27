@@ -31,3 +31,11 @@ accounted message with a 👍 reaction, and reports monthly 50/50 balances.
 
 - Money is stored in integer cents in a local SQLite file (`DB_PATH`, default `./data/expenses.db`). Back up by copying that file.
 - Timezone defaults to `Europe/Kyiv` (`TIMEZONE` env).
+
+## Limitations
+
+- An expense is any message whose **first token is a number**, so a message that
+  happens to start with a number (e.g. a date like `10.06.2026 ...`) will be logged.
+  Start non-expense messages with a non-numeric character.
+- Editing a message after it was accounted does **not** update the stored expense;
+  the bot only reacts to new messages. Post a correction as a new message instead.

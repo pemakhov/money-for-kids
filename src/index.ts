@@ -31,11 +31,15 @@ async function main(): Promise<void> {
       await bot.api.sendPhoto(Number(chatId), new InputFile(png, `${bucket.year}-${bucket.month}.png`));
     } catch (err) {
       console.error('Banner render/send failed; sending text fallback:', err);
-      await bot.api.sendMessage(
-        Number(chatId),
-        `📅 *${monthNameUpper(bucket.month)} ${bucket.year}* 📅`,
-        { parse_mode: 'Markdown' },
-      );
+      try {
+        await bot.api.sendMessage(
+          Number(chatId),
+          `📅 *${monthNameUpper(bucket.month)} ${bucket.year}* 📅`,
+          { parse_mode: 'Markdown' },
+        );
+      } catch (fallbackErr) {
+        console.error('Banner text fallback also failed:', fallbackErr);
+      }
     }
   });
 
