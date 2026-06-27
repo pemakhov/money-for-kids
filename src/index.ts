@@ -14,7 +14,11 @@ async function main(): Promise<void> {
   const chatId = config.groupChatId;
 
   // Catch up on anything missed while offline (settles previous + current month).
-  await reconcileBalance(gateway, config, chatId, 'previous');
+  try {
+    await reconcileBalance(gateway, config, chatId, 'previous');
+  } catch (err) {
+    console.warn('Startup reconcile failed; continuing:', err);
+  }
 
   onUpdate(async (kind, ev) => {
     try {
@@ -26,19 +30,23 @@ async function main(): Promise<void> {
   });
 
   scheduleMonthlyBanner(config.timezone, async () => {
-    // Settle the just-ended month, then post its banner.
-    const bucket = previousBucket(config.timezone);
-    await reconcileBalance(gateway, config, chatId, 'previous');
     try {
-      const png = await renderMonthBanner(bucket.month, bucket.year);
-      await gateway.sendPhoto(chatId, png, `${bucket.year}-${bucket.month}.png`);
-    } catch (err) {
-      console.error('Banner render/send failed; sending text fallback:', err);
+      // Settle the just-ended month, then post its banner.
+      const bucket = previousBucket(config.timezone);
+      await reconcileBalance(gateway, config, chatId, 'previous');
       try {
-        await gateway.sendMessage(chatId, `📅 ${monthNameUpper(bucket.month)} ${bucket.year} 📅`);
-      } catch (fallbackErr) {
-        console.error('Banner text fallback also failed:', fallbackErr);
+        const png = await renderMonthBanner(bucket.month, bucket.year);
+        await gateway.sendPhoto(chatId, png, `${bucket.year}-${bucket.month}.png`);
+      } catch (err) {
+        console.error('Banner render/send failed; sending text fallback:', err);
+        try {
+          await gateway.sendMessage(chatId, `📅 ${monthNameUpper(bucket.month)} ${bucket.year} 📅`);
+        } catch (fallbackErr) {
+          console.error('Banner text fallback also failed:', fallbackErr);
+        }
       }
+    } catch (err) {
+      console.error('Monthly banner cron failed:', err);
     }
   });
 
