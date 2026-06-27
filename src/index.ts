@@ -1,51 +1,48 @@
 import 'dotenv/config';
-import { InputFile } from 'grammy';
 import { loadConfig } from './config';
-import { openDb, getMeta } from './db';
-import { createBot } from './bot';
+import { createGateway } from './telegram-gramjs';
+import { onNewMessage, onEditedMessage } from './handlers';
+import { reconcileBalance } from './reconcile';
 import { scheduleMonthlyBanner } from './scheduler';
 import { renderMonthBanner } from './banner';
-import { currentBucket } from './dates';
+import { previousBucket } from './dates';
 import { monthNameUpper } from './format';
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const db = openDb(config.dbPath);
-  const bot = createBot(config, db);
+  const { gateway, onUpdate } = await createGateway(config);
+  const chatId = config.groupChatId;
 
-  await bot.api.setMyCommands([
-    { command: 'balance', description: 'Баланс за поточний місяць' },
-    { command: 'balance_previous', description: 'Баланс за попередній місяць' },
-    { command: 'to_previous', description: 'Додати витрату в попередній місяць' },
-  ]);
+  // Catch up on anything missed while offline (settles previous + current month).
+  await reconcileBalance(gateway, config, chatId, 'previous');
+
+  onUpdate(async (kind, ev) => {
+    try {
+      if (kind === 'new') await onNewMessage(gateway, config, chatId, ev);
+      else await onEditedMessage(gateway, config, chatId, ev);
+    } catch (err) {
+      console.error('Update handler failed:', err);
+    }
+  });
 
   scheduleMonthlyBanner(config.timezone, async () => {
-    const chatId = getMeta(db, 'group_chat_id');
-    if (!chatId) {
-      console.warn('No group chat id stored yet; skipping monthly banner.');
-      return;
-    }
-    const bucket = currentBucket(config.timezone);
+    // Settle the just-ended month, then post its banner.
+    const bucket = previousBucket(config.timezone);
+    await reconcileBalance(gateway, config, chatId, 'previous');
     try {
       const png = await renderMonthBanner(bucket.month, bucket.year);
-      await bot.api.sendPhoto(Number(chatId), new InputFile(png, `${bucket.year}-${bucket.month}.png`));
+      await gateway.sendPhoto(chatId, png, `${bucket.year}-${bucket.month}.png`);
     } catch (err) {
       console.error('Banner render/send failed; sending text fallback:', err);
       try {
-        await bot.api.sendMessage(
-          Number(chatId),
-          `📅 *${monthNameUpper(bucket.month)} ${bucket.year}* 📅`,
-          { parse_mode: 'Markdown' },
-        );
+        await gateway.sendMessage(chatId, `📅 ${monthNameUpper(bucket.month)} ${bucket.year} 📅`);
       } catch (fallbackErr) {
         console.error('Banner text fallback also failed:', fallbackErr);
       }
     }
   });
 
-  bot.catch((err) => console.error('Bot error:', err));
-  console.log('Bot started.');
-  await bot.start();
+  console.log('Ledger account started.');
 }
 
 main().catch((err) => {
