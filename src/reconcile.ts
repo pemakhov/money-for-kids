@@ -13,7 +13,7 @@ function startOfBucketUnix(bucket: MonthBucket, timezone: string): number {
   const dt = DateTime.fromObject(
     { year: bucket.year, month: bucket.month, day: 1 },
     { zone: timezone },
-  ).startOf('day');
+  );
   return Math.floor(dt.toSeconds());
 }
 

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { DateTime } from 'luxon';
 import { reconcileBalance, THUMBS_UP } from '../src/reconcile';
 import type { TelegramGateway, HistoryMessage } from '../src/gateway';
 import { currentBucket, previousBucket } from '../src/dates';
@@ -15,14 +16,17 @@ interface ReactionCall { messageId: number; emoji: string | null }
 
 function fakeGateway(messages: HistoryMessage[]) {
   const reactions: ReactionCall[] = [];
-  const sent: string[] = [];
+  const sinceCalls: number[] = [];
   const gateway: TelegramGateway = {
-    async fetchHistory() { return messages; },
+    async fetchHistory(_chatId, sinceUnix) {
+      sinceCalls.push(sinceUnix);
+      return messages;
+    },
     async setReaction(_chatId, messageId, emoji) { reactions.push({ messageId, emoji }); },
-    async sendMessage(_chatId, text) { sent.push(text); },
+    async sendMessage() {},
     async sendPhoto() {},
   };
-  return { gateway, reactions, sent };
+  return { gateway, reactions, sinceCalls };
 }
 
 // A unix timestamp inside the given bucket (15th, noon UTC).
@@ -85,5 +89,29 @@ describe('reconcileBalance', () => {
     expect(report).toContain('Сергій: 200 ₴');
     expect(report).toContain('Марина: 200 ₴');
     expect(report).toContain('Витрати порівну, компенсація не потрібна.');
+  });
+
+  it('fetches from the start of the target month in the config timezone', async () => {
+    const cur = currentBucket(config.timezone);
+    const { gateway, sinceCalls } = fakeGateway([]);
+    await reconcileBalance(gateway, config, -100, 'current');
+    const expectedCurSinceUnix = Math.floor(
+      DateTime.fromObject(
+        { year: cur.year, month: cur.month, day: 1 },
+        { zone: config.timezone },
+      ).toSeconds(),
+    );
+    expect(sinceCalls[0]).toBe(expectedCurSinceUnix);
+
+    const prev = previousBucket(config.timezone);
+    const { gateway: gatewayPrev, sinceCalls: sinceCallsPrev } = fakeGateway([]);
+    await reconcileBalance(gatewayPrev, config, -100, 'previous');
+    const expectedPrevSinceUnix = Math.floor(
+      DateTime.fromObject(
+        { year: prev.year, month: prev.month, day: 1 },
+        { zone: config.timezone },
+      ).toSeconds(),
+    );
+    expect(sinceCallsPrev[0]).toBe(expectedPrevSinceUnix);
   });
 });
