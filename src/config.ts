@@ -5,11 +5,13 @@ export interface Participant {
 }
 
 export interface Config {
-  botToken: string;
+  apiId: number;
+  apiHash: string;
+  sessionString: string;
+  groupChatId: number;
   user1: Participant;
   user2: Participant;
   timezone: string;
-  dbPath: string;
 }
 
 const USER1_NAME = { nominative: 'Сергій', dative: 'Сергію' } as const;
@@ -32,10 +34,12 @@ function requireIntEnv(env: NodeJS.ProcessEnv, key: string): number {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
-    botToken: requireEnv(env, 'BOT_TOKEN'),
+    apiId: requireIntEnv(env, 'API_ID'),
+    apiHash: requireEnv(env, 'API_HASH'),
+    sessionString: requireEnv(env, 'TELEGRAM_SESSION'),
+    groupChatId: requireIntEnv(env, 'GROUP_CHAT_ID'),
     user1: { id: requireIntEnv(env, 'USER1_ID'), ...USER1_NAME },
     user2: { id: requireIntEnv(env, 'USER2_ID'), ...USER2_NAME },
     timezone: env.TIMEZONE?.trim() || 'Europe/Kyiv',
-    dbPath: env.DB_PATH?.trim() || './data/expenses.db',
   };
 }
