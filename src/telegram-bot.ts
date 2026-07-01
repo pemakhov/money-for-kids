@@ -10,6 +10,7 @@ const COMMANDS = [
   { command: 'balance', description: 'Баланс за поточний місяць' },
   { command: 'balance_previous', description: 'Баланс за попередній місяць' },
   { command: 'to_previous', description: 'Витрата в попередній місяць: /to_previous <сума> <опис>' },
+  { command: 'month', description: 'Банер із назвою поточного місяця' },
   { command: 'help', description: 'Як користуватися ботом' },
 ];
 

@@ -16,15 +16,16 @@ const t = Math.floor(Date.UTC(2026, 5, 10, 12, 0, 0) / 1000);
 function fake(history: HistoryMessage[] = []) {
   const reactions: { messageId: number; emoji: string | null }[] = [];
   const sent: string[] = [];
+  const photos: { filename: string }[] = [];
   const historyGw: HistoryGateway = {
     async fetchHistory() { return history; },
   };
   const bot: BotGateway = {
     async setReaction(_c, messageId, emoji) { reactions.push({ messageId, emoji }); },
     async sendMessage(_c, text) { sent.push(text); },
-    async sendPhoto() {},
+    async sendPhoto(_c, _png, filename) { photos.push({ filename }); },
   };
-  return { historyGw, bot, reactions, sent };
+  return { historyGw, bot, reactions, sent, photos };
 }
 
 describe('onNewMessage', () => {
@@ -70,6 +71,21 @@ describe('onNewMessage', () => {
     ]);
     await onNewMessage(historyGw, bot, config, -100, { senderId: 1, messageId: 11, text: '/balance', dateUnix: curT });
     expect(sent.some((s) => s.includes('Сергій: 4000 ₴'))).toBe(true);
+  });
+
+  it('posts the current month banner for a participant /month', async () => {
+    const cur = currentBucket(config.timezone);
+    const { historyGw, bot, photos, reactions } = fake();
+    await onNewMessage(historyGw, bot, config, -100, { senderId: 1, messageId: 20, text: '/month', dateUnix: t });
+    expect(photos).toEqual([{ filename: `${cur.year}-${cur.month}.png` }]);
+    expect(reactions).toEqual([]);
+  });
+
+  it('ignores /month from a non-participant', async () => {
+    const { historyGw, bot, photos, sent } = fake();
+    await onNewMessage(historyGw, bot, config, -100, { senderId: 999, messageId: 21, text: '/month', dateUnix: t });
+    expect(photos).toEqual([]);
+    expect(sent).toEqual([]);
   });
 });
 

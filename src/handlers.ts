@@ -3,6 +3,8 @@ import type { Config } from './config';
 import { classify } from './classify';
 import { reconcileBalance, THUMBS_UP } from './reconcile';
 import { formatToPreviousConfirmation } from './format';
+import { postMonthBanner } from './banner';
+import { currentBucket } from './dates';
 
 export interface IncomingEvent {
   senderId: number;
@@ -25,6 +27,7 @@ const HELP =
   '/balance — баланс за поточний місяць\n' +
   '/balance_previous — баланс за попередній місяць\n' +
   '/to_previous <сума> <опис> — витрата в попередній місяць\n' +
+  '/month — банер із назвою поточного місяця\n' +
   '/help — ця довідка';
 
 function isParticipant(config: Config, senderId: number): boolean {
@@ -53,6 +56,10 @@ export async function onNewMessage(
   if (text === '/balance_previous') {
     const report = await reconcileBalance(history, bot, config, chatId, 'previous');
     await bot.sendMessage(chatId, report);
+    return;
+  }
+  if (text === '/month') {
+    await postMonthBanner(bot, chatId, currentBucket(config.timezone));
     return;
   }
 
