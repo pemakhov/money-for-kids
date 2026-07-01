@@ -1,0 +1,12 @@
+appId: com.pemakhov.moneyforkids
+productName: Money for Kids
+directories:
+  output: release
+files:
+  - dist/**
+  - assets/**
+  - package.json
+mac:
+  target: dir
+  category: public.app-category.utilities
+  icon: assets/icon.png
