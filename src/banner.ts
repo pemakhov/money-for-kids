@@ -1,5 +1,7 @@
 import sharp from 'sharp';
 import { monthNameUpper } from './format';
+import type { BotGateway } from './gateway';
+import type { MonthBucket } from './dates';
 
 export async function renderMonthBanner(month: number, year: number): Promise<Buffer> {
   const title = `${monthNameUpper(month)} ${year}`;
@@ -10,4 +12,22 @@ export async function renderMonthBanner(month: number, year: number): Promise<Bu
         font-size="150" font-weight="bold" fill="#ffffff">${title}</text>
 </svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+export async function postMonthBanner(
+  bot: BotGateway,
+  chatId: number,
+  bucket: MonthBucket,
+): Promise<void> {
+  try {
+    const png = await renderMonthBanner(bucket.month, bucket.year);
+    await bot.sendPhoto(chatId, png, `${bucket.year}-${bucket.month}.png`);
+  } catch (err) {
+    console.error('Banner render/send failed; sending text fallback:', err);
+    try {
+      await bot.sendMessage(chatId, `📅 ${monthNameUpper(bucket.month)} ${bucket.year} 📅`);
+    } catch (fallbackErr) {
+      console.error('Banner text fallback also failed:', fallbackErr);
+    }
+  }
 }

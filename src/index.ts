@@ -5,9 +5,8 @@ import { createBotGateway } from './telegram-bot';
 import { onNewMessage, onEditedMessage } from './handlers';
 import { reconcileBalance } from './reconcile';
 import { scheduleMonthlyBanner } from './scheduler';
-import { renderMonthBanner } from './banner';
+import { postMonthBanner } from './banner';
 import { previousBucket } from './dates';
-import { monthNameUpper } from './format';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -37,17 +36,7 @@ async function main(): Promise<void> {
       // Settle the just-ended month, then post its banner.
       const bucket = previousBucket(config.timezone);
       await reconcileBalance(historyGateway, botGateway, config, chatId, 'previous');
-      try {
-        const png = await renderMonthBanner(bucket.month, bucket.year);
-        await botGateway.sendPhoto(chatId, png, `${bucket.year}-${bucket.month}.png`);
-      } catch (err) {
-        console.error('Banner render/send failed; sending text fallback:', err);
-        try {
-          await botGateway.sendMessage(chatId, `📅 ${monthNameUpper(bucket.month)} ${bucket.year} 📅`);
-        } catch (fallbackErr) {
-          console.error('Banner text fallback also failed:', fallbackErr);
-        }
-      }
+      await postMonthBanner(botGateway, chatId, bucket);
     } catch (err) {
       console.error('Monthly banner cron failed:', err);
     }

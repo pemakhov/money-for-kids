@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
-import { renderMonthBanner } from '../src/banner';
+import { renderMonthBanner, postMonthBanner } from '../src/banner';
+import type { BotGateway } from '../src/gateway';
 
 describe('renderMonthBanner', () => {
   it('produces a 1200x600 PNG buffer', async () => {
@@ -11,5 +12,37 @@ describe('renderMonthBanner', () => {
     expect(meta.format).toBe('png');
     expect(meta.width).toBe(1200);
     expect(meta.height).toBe(600);
+  });
+});
+
+function fakeBot() {
+  const photos: { filename: string }[] = [];
+  const messages: string[] = [];
+  const bot: BotGateway = {
+    async setReaction() {},
+    async sendMessage(_c, text) { messages.push(text); },
+    async sendPhoto(_c, _png, filename) { photos.push({ filename }); },
+  };
+  return { bot, photos, messages };
+}
+
+describe('postMonthBanner', () => {
+  it('sends a photo with the bucket filename', async () => {
+    const { bot, photos, messages } = fakeBot();
+    await postMonthBanner(bot, -100, { year: 2026, month: 7 });
+    expect(photos).toEqual([{ filename: '2026-7.png' }]);
+    expect(messages).toEqual([]);
+  });
+
+  it('falls back to a text message when sending the photo fails', async () => {
+    const messages: string[] = [];
+    const bot: BotGateway = {
+      async setReaction() {},
+      async sendMessage(_c, text) { messages.push(text); },
+      async sendPhoto() { throw new Error('boom'); },
+    };
+    await postMonthBanner(bot, -100, { year: 2026, month: 7 });
+    expect(messages.length).toBe(1);
+    expect(messages[0]).toContain('2026');
   });
 });
