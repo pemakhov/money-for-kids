@@ -42,4 +42,12 @@ describe('classify', () => {
     expect(classify({ senderId: 2, text: '/to_previous просто текст', dateUnix: JUNE }, config))
       .toEqual({ kind: 'not_expense' });
   });
+
+  it('counts /to_previous when Telegram appended @botname (group command)', () => {
+    const c = classify({ senderId: 2, text: '/to_previous@money_bot 300 Максу на бутерброд', dateUnix: JUNE }, config);
+    expect(c).toMatchObject({
+      kind: 'count', amountCents: 30000, source: 'to_previous',
+      bucket: { year: 2026, month: 5 }, description: '300 Максу на бутерброд',
+    });
+  });
 });

@@ -21,7 +21,11 @@ export type Classification =
       description: string;
     };
 
-const TO_PREVIOUS = /^\/to_previous\b/;
+// Match /to_previous, tolerating the @botusername suffix Telegram appends to
+// commands in groups. The live bot path strips it via normalizeCommand, but the
+// MTProto history reader (used by reconcileBalance) reads raw text and does not,
+// so classify — the single source of truth for both paths — must handle it.
+const TO_PREVIOUS = /^\/to_previous(?:@[A-Za-z0-9_]+)?\b/;
 
 function participantFor(config: Config, senderId: number): Participant | null {
   if (senderId === config.user1.id) return config.user1;
