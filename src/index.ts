@@ -28,7 +28,7 @@ async function main(): Promise<void> {
       if (kind === 'new') await onNewMessage(historyGateway, botGateway, config, chatId, ev);
       else await onEditedMessage(botGateway, config, chatId, ev);
     } catch (err) {
-      console.error('Update handler failed:', err);
+      console.error(`Update handler failed (kind=${kind}, messageId=${ev.messageId}):`, err);
     }
   });
 

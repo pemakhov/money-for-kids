@@ -13,6 +13,10 @@ function senderIdOf(message: Api.Message): number {
 
 // The bot sets 👍, so MTProto can't use chosenOrder (its own reaction view);
 // it must find the bot's peer in the per-peer recentReactions list.
+// WHY: recentReactions is a bounded recent-reactors window that Telegram may
+// truncate or return empty; it does not affect balance TOTALS (those come
+// from classify), but if the bot's peer falls out of the window, a stale 👍
+// may not get cleared by reconcile.
 export function botReactedThumbsUp(
   reactions: Api.MessageReactions | undefined,
   botUserId: number,

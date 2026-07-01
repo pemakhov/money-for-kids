@@ -14,6 +14,8 @@ const COMMANDS = [
 
 // In groups Telegram appends @botusername to commands; strip it so exact
 // command matching and argument parsing in handlers/classify still work.
+// WHY: botUsername is interpolated into the RegExp unescaped, but this is
+// safe because Telegram usernames are restricted to [A-Za-z0-9_].
 export function normalizeCommand(text: string, botUsername: string): string {
   return text.replace(
     new RegExp(`^(/[A-Za-z0-9_]+)@${botUsername}\\b`, 'i'),
@@ -61,6 +63,8 @@ export async function createBotGateway(config: Config): Promise<{
     },
   };
 
+  // WHY: must be called once — it registers listeners per call, and index.ts
+  // calls it once.
   function onUpdate(handler: UpdateHandler): void {
     bot.on('message:text', async (ctx) => {
       if (ctx.chat.id !== config.groupChatId) return;
