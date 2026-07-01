@@ -5,6 +5,7 @@ export type ServerState = 'stopped' | 'starting' | 'running' | 'crashed';
 export interface ChildHandle {
   kill(signal?: NodeJS.Signals): void;
   on(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): void;
+  on(event: 'error', listener: (err: Error) => void): void;
 }
 
 export type SpawnFn = () => ChildHandle;
@@ -74,6 +75,10 @@ export function createServerController(opts: ServerControllerOptions): ServerCon
       if (child !== c) return;
       handleExit();
     });
+    c.on('error', () => {
+      if (child !== c) return;
+      handleExit();
+    });
     graceTimer = setTimeout(() => {
       graceTimer = null;
       if (state === 'starting' && child === c) {
@@ -128,6 +133,7 @@ export function createServerController(opts: ServerControllerOptions): ServerCon
     }
     intentional = true;
     child.kill('SIGTERM');
+    killTimer = clear(killTimer);
     killTimer = setTimeout(() => {
       killTimer = null;
       if (child) child.kill('SIGKILL');

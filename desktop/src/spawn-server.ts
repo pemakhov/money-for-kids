@@ -21,6 +21,10 @@ export function createSpawn(repoPath: string, nodePath: string, logPath: string)
     const child = spawn(command, args, { cwd, env: { ...process.env } });
     child.stdout?.pipe(log, { end: false });
     child.stderr?.pipe(log, { end: false });
+    let ended = false;
+    const endLog = () => { if (!ended) { ended = true; log.end(); } };
+    child.on('exit', endLog);
+    child.on('error', (err) => { log.write(`spawn error: ${err.message}\n`); endLog(); });
     return child as unknown as ChildHandle;
   };
 }

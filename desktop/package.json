@@ -7,10 +7,10 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build": "tsc",
+    "build": "tsc && node scripts/stamp-repo-root.mjs",
     "dev": "npm run build && electron .",
     "gen-icons": "node scripts/gen-icons.mjs",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run gen-icons && npm run build && electron-builder"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",

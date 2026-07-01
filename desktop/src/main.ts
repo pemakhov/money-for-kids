@@ -1,4 +1,4 @@
-import { app, dialog, Menu, Notification, nativeImage } from 'electron';
+import { app, dialog, Menu, Notification, nativeImage, shell } from 'electron';
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -15,8 +15,16 @@ const ASSETS = join(__dirname, '..', 'assets');
 const SUPPORT_DIR = join(homedir(), 'Library', 'Application Support', 'MoneyForKids');
 const CONFIG_PATH = join(SUPPORT_DIR, 'config.json');
 const LOG_PATH = join(homedir(), 'Library', 'Logs', 'MoneyForKids', 'server.log');
-// Default repo path: the checkout this app was built from — two levels up from desktop/dist.
-const DEFAULT_REPO = join(__dirname, '..', '..');
+
+function resolveDefaultRepo(): string {
+  if (!app.isPackaged) return join(__dirname, '..', '..');
+  try {
+    const raw = readFileSync(join(__dirname, 'repo-root.json'), 'utf8');
+    const parsed = JSON.parse(raw) as { repoRoot?: unknown };
+    if (typeof parsed.repoRoot === 'string' && parsed.repoRoot) return parsed.repoRoot;
+  } catch { /* fall through to the (preflight-guarded) bundle-relative default */ }
+  return join(__dirname, '..', '..');
+}
 
 function configIO(path: string): ConfigIO {
   return {
@@ -42,7 +50,7 @@ app.on('window-all-closed', () => {
 });
 
 app.whenReady().then(() => {
-  const config: AppConfig = loadConfig(configIO(CONFIG_PATH), defaultConfig(DEFAULT_REPO));
+  const config: AppConfig = loadConfig(configIO(CONFIG_PATH), defaultConfig(resolveDefaultRepo()));
 
   app.setLoginItemSettings({ openAtLogin: config.openAtLogin });
 
@@ -56,7 +64,16 @@ app.whenReady().then(() => {
   if (!nodePath) {
     setDockIcon('crashed');
     notify('Money for Kids', `Node not found. Set "nodePath" in ${CONFIG_PATH}`);
-    buildDockMenu('crashed', () => {}, () => {}, config);
+    buildDockMenu('crashed', () => {}, () => {}, config, { startEnabled: false });
+    return;
+  }
+
+  const serverEntry = join(config.repoPath, 'src', 'index.ts');
+  const tsxCli = join(config.repoPath, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  if (!existsSync(serverEntry) || !existsSync(tsxCli)) {
+    setDockIcon('crashed');
+    notify('Money for Kids', `Server not found at ${config.repoPath}. Set "repoPath" in ${CONFIG_PATH}`);
+    buildDockMenu('crashed', () => {}, () => {}, config, { startEnabled: false });
     return;
   }
 
@@ -113,15 +130,17 @@ function buildDockMenu(
   onStart: () => void,
   onStop: () => void,
   config: AppConfig,
+  opts: { startEnabled?: boolean } = {},
 ): void {
+  const startEnabled = opts.startEnabled ?? true;
   const isRunning = state === 'running';
   const isBusy = state === 'starting';
   const menu = Menu.buildFromTemplate([
-    { label: 'Start', enabled: !isRunning && !isBusy, click: onStart },
+    { label: 'Start', enabled: startEnabled && !isRunning && !isBusy, click: onStart },
     { label: 'Stop', enabled: isRunning, click: onStop },
     { type: 'separator' },
-    { label: 'Open log', click: () => { void import('electron').then(({ shell }) => shell.openPath(LOG_PATH)); } },
-    { label: 'Open config', click: () => { void import('electron').then(({ shell }) => shell.openPath(CONFIG_PATH)); } },
+    { label: 'Open log', click: () => { void shell.openPath(LOG_PATH); } },
+    { label: 'Open config', click: () => { void shell.openPath(CONFIG_PATH); } },
     {
       label: 'Open at login',
       type: 'checkbox',
