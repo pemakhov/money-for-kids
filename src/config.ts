@@ -8,6 +8,7 @@ export interface Config {
   apiId: number;
   apiHash: string;
   sessionString: string;
+  botToken: string;
   groupChatId: number;
   user1: Participant;
   user2: Participant;
@@ -37,6 +38,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     apiId: requireIntEnv(env, 'API_ID'),
     apiHash: requireEnv(env, 'API_HASH'),
     sessionString: requireEnv(env, 'TELEGRAM_SESSION'),
+    botToken: requireEnv(env, 'BOT_TOKEN'),
     groupChatId: requireIntEnv(env, 'GROUP_CHAT_ID'),
     user1: { id: requireIntEnv(env, 'USER1_ID'), ...USER1_NAME },
     user2: { id: requireIntEnv(env, 'USER2_ID'), ...USER2_NAME },
