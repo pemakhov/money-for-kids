@@ -46,6 +46,8 @@ export async function createBotGateway(config: Config): Promise<{
 
   const botGateway: BotGateway = {
     async setReaction(chatId, messageId, emoji) {
+      // grammy types emoji as a literal union; BotGateway intentionally widens it to
+      // string for transport decoupling, and callers only ever pass real reaction emoji (THUMBS_UP).
       const reaction: ReactionType[] = emoji
         ? [{ type: 'emoji', emoji: emoji as ReactionTypeEmoji['emoji'] }]
         : [];
