@@ -3,7 +3,7 @@ import { classify } from '../src/classify';
 import type { Config } from '../src/config';
 
 const config: Config = {
-  apiId: 1, apiHash: 'h', sessionString: 's', groupChatId: -100,
+  apiId: 1, apiHash: 'h', sessionString: 's', botToken: 'b', groupChatId: -100,
   user1: { id: 1, nominative: 'Сергій', dative: 'Сергію' },
   user2: { id: 2, nominative: 'Марина', dative: 'Марині' },
   timezone: 'Europe/Kyiv',

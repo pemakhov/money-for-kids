@@ -1,4 +1,4 @@
-import type { TelegramGateway } from './gateway';
+import type { HistoryGateway, BotGateway } from './gateway';
 import type { Config } from './config';
 import { classify } from './classify';
 import { reconcileBalance, THUMBS_UP } from './reconcile';
@@ -19,7 +19,8 @@ function isParticipant(config: Config, senderId: number): boolean {
 }
 
 export async function onNewMessage(
-  gateway: TelegramGateway,
+  history: HistoryGateway,
+  bot: BotGateway,
   config: Config,
   chatId: number,
   ev: IncomingEvent,
@@ -28,37 +29,37 @@ export async function onNewMessage(
 
   const text = ev.text.trim();
   if (text === '/balance') {
-    const report = await reconcileBalance(gateway, config, chatId, 'current');
-    await gateway.sendMessage(chatId, report);
+    const report = await reconcileBalance(history, bot, config, chatId, 'current');
+    await bot.sendMessage(chatId, report);
     return;
   }
   if (text === '/balance_previous') {
-    const report = await reconcileBalance(gateway, config, chatId, 'previous');
-    await gateway.sendMessage(chatId, report);
+    const report = await reconcileBalance(history, bot, config, chatId, 'previous');
+    await bot.sendMessage(chatId, report);
     return;
   }
 
   const c = classify({ senderId: ev.senderId, text: ev.text, dateUnix: ev.dateUnix }, config);
   if (c.kind === 'count') {
-    await gateway.setReaction(chatId, ev.messageId, THUMBS_UP);
+    await bot.setReaction(chatId, ev.messageId, THUMBS_UP);
     if (c.source === 'to_previous') {
-      await gateway.sendMessage(chatId, formatToPreviousConfirmation(c.bucket.month, c.amountCents));
+      await bot.sendMessage(chatId, formatToPreviousConfirmation(c.bucket.month, c.amountCents));
     }
     return;
   }
   // Invalid /to_previous from a participant gets usage help; everything else is silent.
   if (c.kind === 'not_expense' && /^\/to_previous\b/.test(text)) {
-    await gateway.sendMessage(chatId, TO_PREVIOUS_USAGE);
+    await bot.sendMessage(chatId, TO_PREVIOUS_USAGE);
   }
 }
 
 export async function onEditedMessage(
-  gateway: TelegramGateway,
+  bot: BotGateway,
   config: Config,
   chatId: number,
   ev: IncomingEvent,
 ): Promise<void> {
   if (!isParticipant(config, ev.senderId)) return;
   const c = classify({ senderId: ev.senderId, text: ev.text, dateUnix: ev.dateUnix }, config);
-  await gateway.setReaction(chatId, ev.messageId, c.kind === 'count' ? THUMBS_UP : null);
+  await bot.setReaction(chatId, ev.messageId, c.kind === 'count' ? THUMBS_UP : null);
 }

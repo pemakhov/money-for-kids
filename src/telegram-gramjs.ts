@@ -1,12 +1,8 @@
-import { TelegramClient, Api, utils } from 'telegram';
+import { TelegramClient, Api } from 'telegram';
 import { StringSession } from 'telegram/sessions';
-import { CustomFile } from 'telegram/client/uploads';
-import type { TelegramGateway, HistoryMessage } from './gateway';
+import type { HistoryGateway, HistoryMessage } from './gateway';
 import type { Config } from './config';
-import type { IncomingEvent } from './handlers';
 import { THUMBS_UP } from './reconcile';
-
-type UpdateHandler = (kind: 'new' | 'edit', ev: IncomingEvent) => Promise<void>;
 
 function senderIdOf(message: Api.Message): number {
   // Private/group messages: fromId is a PeerUser.
@@ -15,23 +11,32 @@ function senderIdOf(message: Api.Message): number {
   return 0; // anonymous/channel posts are not participants
 }
 
-function hasOurReaction(message: Api.Message, thumbsUp: string): boolean {
-  const reactions = message.reactions;
-  if (!reactions || !reactions.results) return false;
-  return reactions.results.some(
+// The bot sets 👍, so MTProto can't use chosenOrder (its own reaction view);
+// it must find the bot's peer in the per-peer recentReactions list.
+// WHY: recentReactions is a bounded recent-reactors window that Telegram may
+// truncate or return empty; it does not affect balance TOTALS (those come
+// from classify), but if the bot's peer falls out of the window, a stale 👍
+// may not get cleared by reconcile.
+export function botReactedThumbsUp(
+  reactions: Api.MessageReactions | undefined,
+  botUserId: number,
+  emoji: string,
+): boolean {
+  const recent = reactions?.recentReactions;
+  if (!recent) return false;
+  return recent.some(
     (r) =>
-      r.chosenOrder !== undefined &&
-      r.chosenOrder !== null &&
+      r.peerId instanceof Api.PeerUser &&
+      Number(r.peerId.userId) === botUserId &&
       r.reaction instanceof Api.ReactionEmoji &&
-      r.reaction.emoticon === thumbsUp,
+      r.reaction.emoticon === emoji,
   );
 }
 
-export async function createGateway(config: Config): Promise<{
-  gateway: TelegramGateway;
-  client: TelegramClient;
-  onUpdate(handler: UpdateHandler): void;
-}> {
+export async function createHistoryGateway(
+  config: Config,
+  botUserId: number,
+): Promise<{ historyGateway: HistoryGateway; client: TelegramClient }> {
   const client = new TelegramClient(
     new StringSession(config.sessionString),
     config.apiId,
@@ -42,7 +47,7 @@ export async function createGateway(config: Config): Promise<{
 
   const peer = await client.getInputEntity(config.groupChatId);
 
-  const gateway: TelegramGateway = {
+  const historyGateway: HistoryGateway = {
     async fetchHistory(_chatId, sinceUnix) {
       const out: HistoryMessage[] = [];
       for await (const m of client.iterMessages(peer, { limit: 1000 })) {
@@ -53,52 +58,12 @@ export async function createGateway(config: Config): Promise<{
           senderId: senderIdOf(m),
           text: m.message ?? '',
           dateUnix: m.date,
-          hasOurReaction: hasOurReaction(m, THUMBS_UP),
+          hasBotReaction: botReactedThumbsUp(m.reactions, botUserId, THUMBS_UP),
         });
       }
       return out;
     },
-    async setReaction(_chatId, messageId, emoji) {
-      await client.invoke(
-        new Api.messages.SendReaction({
-          peer,
-          msgId: messageId,
-          reaction: emoji ? [new Api.ReactionEmoji({ emoticon: emoji })] : [],
-        }),
-      );
-    },
-    async sendMessage(_chatId, text) {
-      await client.sendMessage(peer, { message: text });
-    },
-    async sendPhoto(_chatId, png, filename) {
-      await client.sendFile(peer, {
-        file: new CustomFile(filename, png.length, '', png),
-      });
-    },
   };
 
-  function onUpdate(handler: UpdateHandler): void {
-    client.addEventHandler(async (update: Api.TypeUpdate) => {
-      const isNew =
-        update instanceof Api.UpdateNewMessage ||
-        update instanceof Api.UpdateNewChannelMessage;
-      const isEdit =
-        update instanceof Api.UpdateEditMessage ||
-        update instanceof Api.UpdateEditChannelMessage;
-      if (!isNew && !isEdit) return;
-      const message = (update as { message: Api.TypeMessage }).message;
-      if (!(message instanceof Api.Message)) return;
-      // Drop updates from chats other than the configured group.
-      if (utils.getPeerId(message.peerId) !== String(config.groupChatId)) return;
-      const ev: IncomingEvent = {
-        senderId: senderIdOf(message),
-        messageId: message.id,
-        text: message.message ?? '',
-        dateUnix: message.date,
-      };
-      await handler(isNew ? 'new' : 'edit', ev);
-    });
-  }
-
-  return { gateway, client, onUpdate };
+  return { historyGateway, client };
 }

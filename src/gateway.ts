@@ -3,11 +3,14 @@ export interface HistoryMessage {
   senderId: number;
   text: string;
   dateUnix: number;
-  hasOurReaction: boolean;
+  hasBotReaction: boolean;
 }
 
-export interface TelegramGateway {
+export interface HistoryGateway {
   fetchHistory(chatId: number, sinceUnix: number): Promise<HistoryMessage[]>;
+}
+
+export interface BotGateway {
   setReaction(chatId: number, messageId: number, emoji: string | null): Promise<void>;
   sendMessage(chatId: number, text: string): Promise<void>;
   sendPhoto(chatId: number, png: Buffer, filename: string): Promise<void>;
