@@ -3,3 +3,7 @@ data/
 .env
 dist/
 *.log
+desktop/node_modules/
+desktop/dist/
+desktop/release/
+desktop/assets/*.png

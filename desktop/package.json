@@ -1,0 +1,23 @@
+{
+  "name": "money-for-kids-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc && node scripts/stamp-repo-root.mjs",
+    "dev": "npm run build && electron .",
+    "gen-icons": "node scripts/gen-icons.mjs",
+    "dist": "npm run gen-icons && npm run build && electron-builder"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "sharp": "^0.35.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}
