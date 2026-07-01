@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import type { TelegramGateway } from './gateway';
+import type { HistoryGateway, BotGateway } from './gateway';
 import type { Config } from './config';
 import type { MonthBucket } from './dates';
 import { currentBucket, previousBucket } from './dates';
@@ -22,7 +22,8 @@ function sameBucket(a: MonthBucket, b: MonthBucket): boolean {
 }
 
 export async function reconcileBalance(
-  gateway: TelegramGateway,
+  history: HistoryGateway,
+  bot: BotGateway,
   config: Config,
   chatId: number,
   which: 'current' | 'previous',
@@ -32,7 +33,7 @@ export async function reconcileBalance(
     : previousBucket(config.timezone);
   const sinceUnix = startOfBucketUnix(target, config.timezone);
 
-  const messages = await gateway.fetchHistory(chatId, sinceUnix);
+  const messages = await history.fetchHistory(chatId, sinceUnix);
 
   const rows: { userId: number; amountCents: number }[] = [];
   for (const m of messages) {
@@ -41,10 +42,10 @@ export async function reconcileBalance(
       config,
     );
     const desired = c.kind === 'count';
-    if (desired && !m.hasOurReaction) {
-      await gateway.setReaction(chatId, m.messageId, THUMBS_UP);
-    } else if (!desired && m.hasOurReaction) {
-      await gateway.setReaction(chatId, m.messageId, null);
+    if (desired && !m.hasBotReaction) {
+      await bot.setReaction(chatId, m.messageId, THUMBS_UP);
+    } else if (!desired && m.hasBotReaction) {
+      await bot.setReaction(chatId, m.messageId, null);
     }
     if (c.kind === 'count' && sameBucket(c.bucket, target)) {
       rows.push({ userId: c.participant.id, amountCents: c.amountCents });
