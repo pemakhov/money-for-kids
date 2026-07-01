@@ -46,6 +46,7 @@ see `src/config.ts`.
 - `/balance` — totals and who-owes-whom for the current month.
 - `/balance_previous` — same for the previous month (includes `/to_previous` entries).
 - `/to_previous <сума> <опис>` — log an expense into the previous month, e.g. `/to_previous 300 Максу на бутерброд`.
+- `/month` — post a banner image with the current month's name.
 - On the 1st of each month the bot posts a banner image with the month name.
 
 ## Notes
