@@ -55,6 +55,13 @@ describe('onNewMessage', () => {
     expect(sent.some((s) => s.includes('/to_previous'))).toBe(true);
   });
 
+  it('replies to /help with usage info', async () => {
+    const { historyGw, bot, reactions, sent } = fake();
+    await onNewMessage(historyGw, bot, config, -100, { senderId: 1, messageId: 14, text: '/help', dateUnix: t });
+    expect(reactions).toEqual([]);
+    expect(sent.some((s) => s.includes('/balance') && s.includes('/to_previous'))).toBe(true);
+  });
+
   it('replies to /balance with a reconciled report', async () => {
     const cur = currentBucket(config.timezone);
     const curT = Math.floor(Date.UTC(cur.year, cur.month - 1, 15, 12, 0, 0) / 1000);

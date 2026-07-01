@@ -14,6 +14,19 @@ export interface IncomingEvent {
 const TO_PREVIOUS_USAGE =
   'Використання: /to_previous <сума> <опис>\nНаприклад: /to_previous 300 Максу на бутерброд';
 
+const HELP =
+  'Money for Kids — облік витрат на дітей.\n' +
+  '\n' +
+  'Щоб записати витрату, надішліть повідомлення, що починається із суми:\n' +
+  '  300 Максу на бутерброд\n' +
+  'Бот позначить його 👍. Редагування повідомлення оновлює позначку.\n' +
+  '\n' +
+  'Команди:\n' +
+  '/balance — баланс за поточний місяць\n' +
+  '/balance_previous — баланс за попередній місяць\n' +
+  '/to_previous <сума> <опис> — витрата в попередній місяць\n' +
+  '/help — ця довідка';
+
 function isParticipant(config: Config, senderId: number): boolean {
   return senderId === config.user1.id || senderId === config.user2.id;
 }
@@ -28,6 +41,10 @@ export async function onNewMessage(
   if (!isParticipant(config, ev.senderId)) return;
 
   const text = ev.text.trim();
+  if (text === '/help') {
+    await bot.sendMessage(chatId, HELP);
+    return;
+  }
   if (text === '/balance') {
     const report = await reconcileBalance(history, bot, config, chatId, 'current');
     await bot.sendMessage(chatId, report);
