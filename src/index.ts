@@ -7,13 +7,19 @@ import { reconcileBalance } from './reconcile';
 import { scheduleMonthlyBanner } from './scheduler';
 import { postMonthBanner } from './banner';
 import { previousBucket } from './dates';
+import { isOnline, retry, startHealthMonitor, startWakeDetector } from './watchdog';
+
+/** Backoff for the catch-up reconcile after a wake, while Wi-Fi comes back. */
+const WAKE_RECONCILE_DELAYS_MS = [5_000, 20_000, 60_000] as const;
 
 async function main(): Promise<void> {
   const config = loadConfig();
   const chatId = config.groupChatId;
 
-  const { botGateway, bot, botUserId, onUpdate } = await createBotGateway(config);
-  const { historyGateway } = await createHistoryGateway(config, botUserId);
+  const { botGateway, botUserId, onUpdate, startPolling, isPollingHealthy, dropStaleSockets } =
+    await createBotGateway(config);
+  const { historyGateway, isConnected, ensureConnected, reconnect } =
+    await createHistoryGateway(config, botUserId);
 
   // Catch up on anything missed while offline (settles previous + current month).
   try {
@@ -28,6 +34,14 @@ async function main(): Promise<void> {
       else await onEditedMessage(botGateway, config, chatId, ev);
     } catch (err) {
       console.error(`Update handler failed (kind=${kind}, messageId=${ev.messageId}):`, err);
+      // A command that answers with silence is indistinguishable from a dead
+      // bot, which is what sends the user to restart it. Say so instead; the
+      // watchdog is already healing whatever broke.
+      if (kind === 'new' && ev.text.startsWith('/')) {
+        await botGateway
+          .sendMessage(chatId, '⚠️ Не вдалося виконати команду. Спробуйте ще раз за хвилину.')
+          .catch((sendErr) => console.error('Failed to report handler error:', sendErr));
+      }
     }
   });
 
@@ -42,7 +56,50 @@ async function main(): Promise<void> {
     }
   });
 
-  await bot.start({ onStart: () => console.log('Ledger bot started.') });
+  // Both connections die silently when the laptop sleeps: the Bot API sockets
+  // become unusable zombies, and the MTProto sender needs a nudge to come back.
+  // A detected wake heals both without waiting for a health check to notice
+  // (`force`); a health check only touches the half that actually looks broken.
+  async function recoverConnections(reason: string, force = false): Promise<void> {
+    console.warn(`[watchdog] recovering connections (${reason})`);
+    if (force || !isPollingHealthy()) dropStaleSockets();
+    if (force || !isConnected()) {
+      await (force ? reconnect() : ensureConnected()).catch((err) =>
+        console.error('[watchdog] MTProto reconnect failed:', err),
+      );
+    }
+  }
+
+  startWakeDetector({
+    onWake: (gapMs) => {
+      void (async () => {
+        console.warn(`[watchdog] wake detected after ${Math.round(gapMs / 1000)}s asleep`);
+        await recoverConnections('wake', true);
+        // Long polling replays the last 24h on its own; this covers a longer
+        // sleep, where Telegram has already dropped those updates.
+        await retry(
+          () => reconcileBalance(historyGateway, botGateway, config, chatId, 'previous'),
+          WAKE_RECONCILE_DELAYS_MS,
+        ).catch((err) => console.error('[watchdog] post-wake reconcile failed:', err));
+      })();
+    },
+  });
+
+  startHealthMonitor({
+    // Being offline is not the same as being broken: while the machine has no
+    // network there is nothing to repair and nothing a restart would fix.
+    check: async () => (isPollingHealthy() && isConnected()) || !(await isOnline()),
+    recover: () => recoverConnections('health check'),
+    onGiveUp: () => {
+      console.error('[watchdog] still unhealthy after repeated recovery; exiting for a restart');
+      process.exit(1);
+    },
+  });
+
+  startPolling((err) => {
+    console.error('Long polling stopped:', err);
+    process.exit(1);
+  });
 }
 
 main().catch((err) => {

@@ -52,14 +52,42 @@ see `src/config.ts`.
 ## Notes
 
 - **No database**: all state lives in Telegram. The bot's 👍 reactions mark counted expenses, and the ledger recomputes the balance from chat history on demand (on `/balance`, `/balance_previous`, at startup, and before the monthly banner).
-- **Reconciliation**: edits and deletes are automatically reconciled by re-reading history. If the bot or the MTProto reader was offline, reconciliation happens at the next balance check or startup.
+- **Reconciliation**: edits and deletes are automatically reconciled by re-reading history. If the bot or the MTProto reader was offline, reconciliation happens at the next balance check, startup, or wake from sleep.
 - The MTProto account is a silent history reader: it stays in the group and fetches messages for the balance recompute, but never posts or reacts.
 - Timezone defaults to `Europe/Kyiv` (`TIMEZONE` env).
+
+## Reliability on a sleeping laptop
+
+The server is meant to run unattended on a Mac that sleeps whenever the lid
+closes. Sleep silently kills both Telegram connections — the sockets stay open
+as far as either side can tell — so the server watches for that and heals
+itself instead of waiting to be restarted.
+
+- **Wake detection** (`src/watchdog.ts`): a timer compares wall-clock time
+  against its own tick rate, and a jump means the machine slept. On wake the
+  server drops its pooled Bot API sockets, reconnects the MTProto reader, and
+  re-runs a reconcile so anything posted during the sleep still gets its 👍.
+- **Bounded API timeout**: a Bot API call gives up after 45s rather than
+  grammy's default of 500s, so even an unnoticed stall clears in under a
+  minute instead of leaving the bot deaf for eight.
+- **Health monitor**: every 30s it checks that long polling is still returning
+  and that the MTProto reader is connected, and repairs whichever half is
+  broken. After 10 consecutive unhealthy checks (~5 minutes) it exits non-zero
+  so the dock controller can start a clean process.
+- **Unlimited MTProto reconnects**: gramjs gives up for good once a finite
+  retry count runs out, and a wake burns through a handful of attempts while
+  Wi-Fi reassociates. That is what used to leave `/balance` hanging until a
+  manual restart.
+- **Missed monthly banner**: the 1st-of-the-month post still happens when the
+  machine slept through midnight (up to a week late).
+
+While the Mac is actually asleep the bot is off, and nothing here changes that
+— messages sent during a sleep are handled once it wakes.
 
 ## Limitations
 
 - An expense is any message whose **first token is a number**, so a message that
   happens to start with a number (e.g. a date like `10.06.2026 ...`) will be logged.
   Start non-expense messages with a non-numeric character.
-- Editing or deleting a message while the bot or the MTProto reader is offline will reconcile at the next balance check or startup, not instantly.
+- Editing or deleting a message while the bot or the MTProto reader is offline will reconcile at the next balance check, startup, or wake from sleep, not instantly.
 - Detecting whether the bot already reacted 👍 to a message relies on Telegram's `recentReactions`, a bounded window of recent reactors that Telegram may truncate or return empty. Balance totals are unaffected (they come from re-classifying history), but if the bot's reaction falls out of that window, a stale 👍 may not get cleared by reconcile.
