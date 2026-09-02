@@ -11,6 +11,17 @@ export interface Stoppable {
   stop(): void;
 }
 
+/**
+ * Timestamped watchdog line.
+ *
+ * WHY: these interleave with gramjs's own timestamped logs in one file, and a
+ * bare `console.warn` cannot be placed on the timeline of an incident — which
+ * is exactly what you need when reading back why the process restarted.
+ */
+export function watchdogLog(level: 'warn' | 'error', message: string): void {
+  console[level](`[${new Date().toISOString()}] [watchdog] ${message}`);
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -101,12 +112,27 @@ export async function isOnline(
 }
 
 export const HEALTH_CHECK_INTERVAL_MS = 30_000;
-export const HEALTH_MAX_FAILURES = 10;
+// Eight minutes of a genuinely wedged process before handing it to the
+// supervisor. Generous on purpose: the wake detector already heals the common
+// case within seconds, so reaching this count means something unforeseen, and
+// a restart that fires too eagerly is worse than the fault it claims to fix.
+export const HEALTH_MAX_FAILURES = 16;
+// Must clear a whole poll cycle (request timeout + grammy's retry pause + one
+// long poll), or a repair lands before the previous one can be shown to work.
+export const HEALTH_RECOVER_INTERVAL_MS = 120_000;
 
 /**
- * Polls `check`; every unhealthy verdict triggers `recover`, and
- * `maxFailures` consecutive unhealthy verdicts trigger `onGiveUp` (which is
- * expected to end the process so the supervisor can start a clean one).
+ * Polls `check`; an unhealthy verdict triggers `recover` (at most once per
+ * `recoverIntervalMs`), and `maxFailures` consecutive unhealthy verdicts
+ * trigger `onGiveUp` (which is expected to end the process so the supervisor
+ * can start a clean one).
+ *
+ * WHY the recovery cooldown: healing a connection is disruptive — it tears
+ * down requests in flight — so a repair needs quiet time to prove it worked.
+ * Repairing on every tick once cost us a crash loop: each repair aborted the
+ * very long poll whose completion was the evidence of health, so the verdict
+ * could never turn healthy again and the process exited every five minutes.
+ * Recovery must always be slower than the recovery it is waiting on.
  */
 export function startHealthMonitor(opts: {
   check: () => Promise<boolean>;
@@ -114,13 +140,16 @@ export function startHealthMonitor(opts: {
   onGiveUp: () => void;
   intervalMs?: number;
   maxFailures?: number;
+  recoverIntervalMs?: number;
 }): Stoppable {
   const intervalMs = opts.intervalMs ?? HEALTH_CHECK_INTERVAL_MS;
   const maxFailures = opts.maxFailures ?? HEALTH_MAX_FAILURES;
+  const recoverIntervalMs = opts.recoverIntervalMs ?? HEALTH_RECOVER_INTERVAL_MS;
 
   let failures = 0;
   let busy = false;
   let gaveUp = false;
+  let lastRecoverAt = -Infinity;
 
   const handle = setInterval(() => {
     // A check that outlives its interval must not stack up behind itself.
@@ -133,15 +162,17 @@ export function startHealthMonitor(opts: {
           return;
         }
         failures++;
-        console.warn(`[watchdog] unhealthy (${failures}/${maxFailures})`);
+        watchdogLog('warn', `unhealthy (${failures}/${maxFailures})`);
         if (failures >= maxFailures) {
           gaveUp = true;
           opts.onGiveUp();
           return;
         }
+        if (Date.now() - lastRecoverAt < recoverIntervalMs) return;
+        lastRecoverAt = Date.now();
         await opts.recover();
       } catch (err) {
-        console.error('[watchdog] health check failed:', err);
+        watchdogLog('error', `health check failed: ${String(err)}`);
       } finally {
         busy = false;
       }

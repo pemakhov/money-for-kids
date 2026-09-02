@@ -70,16 +70,24 @@ itself instead of waiting to be restarted.
 - **Bounded API timeout**: a Bot API call gives up after 45s rather than
   grammy's default of 500s, so even an unnoticed stall clears in under a
   minute instead of leaving the bot deaf for eight.
-- **Health monitor**: every 30s it checks that long polling is still returning
-  and that the MTProto reader is connected, and repairs whichever half is
-  broken. After 10 consecutive unhealthy checks (~5 minutes) it exits non-zero
-  so the dock controller can start a clean process.
+- **Health monitor**: every 30s it checks that long polling is still turning
+  over and that the MTProto reader is connected, and repairs whichever half is
+  broken — at most once every 2 minutes, since a repair aborts requests in
+  flight and needs quiet time to prove it worked. After 16 consecutive
+  unhealthy checks (~8 minutes) it exits non-zero so the dock controller can
+  start a clean process.
 - **Unlimited MTProto reconnects**: gramjs gives up for good once a finite
   retry count runs out, and a wake burns through a handful of attempts while
   Wi-Fi reassociates. That is what used to leave `/balance` hanging until a
   manual restart.
 - **Missed monthly banner**: the 1st-of-the-month post still happens when the
   machine slept through midnight (up to a week late).
+
+The monitor deliberately measures whether Bot API requests *settle*, not
+whether they succeed. Measuring success cost us a crash loop on 2 Sep 2026:
+the repair for sick polling is to drop the sockets, which aborts the long poll
+in flight, so a quiet chat could never complete the 30s poll that would have
+proved the bot healthy — and the process restarted itself every five minutes.
 
 While the Mac is actually asleep the bot is off, and nothing here changes that
 — messages sent during a sleep are handled once it wakes.

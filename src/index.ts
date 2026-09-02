@@ -7,7 +7,7 @@ import { reconcileBalance } from './reconcile';
 import { scheduleMonthlyBanner } from './scheduler';
 import { postMonthBanner } from './banner';
 import { previousBucket } from './dates';
-import { isOnline, retry, startHealthMonitor, startWakeDetector } from './watchdog';
+import { isOnline, retry, startHealthMonitor, startWakeDetector, watchdogLog } from './watchdog';
 
 /** Backoff for the catch-up reconcile after a wake, while Wi-Fi comes back. */
 const WAKE_RECONCILE_DELAYS_MS = [5_000, 20_000, 60_000] as const;
@@ -61,11 +61,11 @@ async function main(): Promise<void> {
   // A detected wake heals both without waiting for a health check to notice
   // (`force`); a health check only touches the half that actually looks broken.
   async function recoverConnections(reason: string, force = false): Promise<void> {
-    console.warn(`[watchdog] recovering connections (${reason})`);
+    watchdogLog('warn', `recovering connections (${reason})`);
     if (force || !isPollingHealthy()) dropStaleSockets();
     if (force || !isConnected()) {
       await (force ? reconnect() : ensureConnected()).catch((err) =>
-        console.error('[watchdog] MTProto reconnect failed:', err),
+        watchdogLog('error', `MTProto reconnect failed: ${String(err)}`),
       );
     }
   }
@@ -73,25 +73,34 @@ async function main(): Promise<void> {
   startWakeDetector({
     onWake: (gapMs) => {
       void (async () => {
-        console.warn(`[watchdog] wake detected after ${Math.round(gapMs / 1000)}s asleep`);
+        watchdogLog('warn', `wake detected after ${Math.round(gapMs / 1000)}s asleep`);
         await recoverConnections('wake', true);
         // Long polling replays the last 24h on its own; this covers a longer
         // sleep, where Telegram has already dropped those updates.
         await retry(
           () => reconcileBalance(historyGateway, botGateway, config, chatId, 'previous'),
           WAKE_RECONCILE_DELAYS_MS,
-        ).catch((err) => console.error('[watchdog] post-wake reconcile failed:', err));
+        ).catch((err) => watchdogLog('error', `post-wake reconcile failed: ${String(err)}`));
       })();
     },
   });
 
   startHealthMonitor({
-    // Being offline is not the same as being broken: while the machine has no
-    // network there is nothing to repair and nothing a restart would fix.
-    check: async () => (isPollingHealthy() && isConnected()) || !(await isOnline()),
+    check: async () => {
+      const polling = isPollingHealthy();
+      const mtproto = isConnected();
+      if (polling && mtproto) return true;
+      // Being offline is not the same as being broken: while the machine has
+      // no network there is nothing to repair and nothing a restart would fix.
+      if (!(await isOnline())) return true;
+      // Name the sick half. Without this the log only says "unhealthy", and
+      // telling a real fault from a watchdog of its own making means guessing.
+      watchdogLog('warn', `sick: ${polling ? '' : 'polling '}${mtproto ? '' : 'mtproto'}`.trim());
+      return false;
+    },
     recover: () => recoverConnections('health check'),
     onGiveUp: () => {
-      console.error('[watchdog] still unhealthy after repeated recovery; exiting for a restart');
+      watchdogLog('error', 'still unhealthy after repeated recovery; exiting for a restart');
       process.exit(1);
     },
   });

@@ -100,7 +100,7 @@ describe('startWakeDetector', () => {
 });
 
 describe('startHealthMonitor', () => {
-  const opts = { intervalMs: 1000, maxFailures: 3 };
+  const opts = { intervalMs: 1000, maxFailures: 3, recoverIntervalMs: 0 };
 
   it('does not recover while checks pass', async () => {
     const recover = vi.fn().mockResolvedValue(undefined);
@@ -115,7 +115,7 @@ describe('startHealthMonitor', () => {
     monitor.stop();
   });
 
-  it('recovers on every unhealthy check', async () => {
+  it('recovers on an unhealthy check', async () => {
     const recover = vi.fn().mockResolvedValue(undefined);
     const monitor = startHealthMonitor({
       ...opts,
@@ -125,6 +125,39 @@ describe('startHealthMonitor', () => {
     });
     await vi.advanceTimersByTimeAsync(2000);
     expect(recover).toHaveBeenCalledTimes(2);
+    monitor.stop();
+  });
+
+  // The crash loop this guards against: recovery aborts the request whose
+  // completion would prove health, so repairing every tick can never converge.
+  it('leaves a recovery time to work before trying another', async () => {
+    const recover = vi.fn().mockResolvedValue(undefined);
+    const monitor = startHealthMonitor({
+      ...opts,
+      maxFailures: 100,
+      recoverIntervalMs: 5000,
+      check: async () => false,
+      recover,
+      onGiveUp: vi.fn(),
+    });
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(recover).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(recover).toHaveBeenCalledTimes(2);
+    monitor.stop();
+  });
+
+  it('still counts unhealthy checks that the cooldown skips', async () => {
+    const onGiveUp = vi.fn();
+    const monitor = startHealthMonitor({
+      ...opts,
+      recoverIntervalMs: 60_000,
+      check: async () => false,
+      recover: async () => {},
+      onGiveUp,
+    });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(onGiveUp).toHaveBeenCalledTimes(1);
     monitor.stop();
   });
 

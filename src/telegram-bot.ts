@@ -17,9 +17,17 @@ export const POLL_TIMEOUT_SECONDS = 30;
 // poll itself is the tightest bound that never cuts a healthy request short.
 export const API_TIMEOUT_SECONDS = POLL_TIMEOUT_SECONDS + 15;
 
-// A healthy long poll returns at least every POLL_TIMEOUT_SECONDS; anything
-// past this means the polling loop is stuck rather than merely idle.
-export const POLL_STALL_MS = (POLL_TIMEOUT_SECONDS + 60) * 1000;
+// Liveness is measured by requests *settling*, not by them succeeding.
+//
+// WHY: the watchdog's repair for sick polling is to drop the sockets, which
+// aborts the long poll in flight. Judging health by the last *successful* poll
+// made the repair destroy its own proof: a quiet chat needs the full 30s to
+// answer, grammy waits 3s before retrying an aborted poll, and a check every
+// 30s cut every attempt 3s short — for ever. A settle (answer, API error or
+// network error alike) says the loop is turning, which is the only thing a
+// socket drop or a restart can fix. The bound must clear one full request
+// timeout plus grammy's retry pause.
+export const POLL_STALL_MS = (API_TIMEOUT_SECONDS + 45) * 1000;
 
 /** Backoff for a reaction that failed on the network rather than on the API. */
 const REACTION_RETRY_DELAYS_MS = [1_000, 3_000] as const;
@@ -66,7 +74,7 @@ export interface BotRuntime {
   onUpdate(handler: UpdateHandler): void;
   /** Starts long polling in the background. `onStopped` fires if it ever ends. */
   startPolling(onStopped: (err: unknown) => void): void;
-  /** True while the polling loop is running and answering within its timeout. */
+  /** True while the polling loop is running and its requests still settle. */
   isPollingHealthy(): boolean;
   /**
    * Closes every pooled HTTPS socket, failing whatever is in flight on them.
@@ -88,11 +96,13 @@ export async function createBotGateway(config: Config): Promise<BotRuntime> {
     },
   });
 
-  let lastPollAt = 0;
+  let lastPollSettledAt = 0;
   bot.api.config.use(async (prev, method, payload, signal) => {
-    const res = await prev(method, payload, signal);
-    if (method === 'getUpdates' && res.ok) lastPollAt = Date.now();
-    return res;
+    try {
+      return await prev(method, payload, signal);
+    } finally {
+      if (method === 'getUpdates') lastPollSettledAt = Date.now();
+    }
   });
 
   // WHY: grammy's default error handler stops long polling for good. Every
@@ -147,7 +157,7 @@ export async function createBotGateway(config: Config): Promise<BotRuntime> {
   }
 
   function startPolling(onStopped: (err: unknown) => void): void {
-    lastPollAt = Date.now();
+    lastPollSettledAt = Date.now();
     bot
       .start({
         timeout: POLL_TIMEOUT_SECONDS,
@@ -162,7 +172,7 @@ export async function createBotGateway(config: Config): Promise<BotRuntime> {
     botUserId,
     onUpdate,
     startPolling,
-    isPollingHealthy: () => bot.isRunning() && Date.now() - lastPollAt < POLL_STALL_MS,
+    isPollingHealthy: () => bot.isRunning() && Date.now() - lastPollSettledAt < POLL_STALL_MS,
     dropStaleSockets: () => agent.destroy(),
   };
 }
